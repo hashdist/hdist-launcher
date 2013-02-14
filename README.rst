@@ -5,46 +5,60 @@ This is a very small program that facilitates launching applications
 from relocateable ``bin`` directories, typically as the result of creating
 Hashdist profiles. It has the following usecases:
 
+
+**Relative shebangs**:
+   While Unix allows ``$!some/relative/path``, it
+   is completely useless, as it uses the CWD(!). Using
+   `hdist-launcher` allows for *proper* relative shebangs.  If a
+   script is launched, then the ``hdist-launcher`` will act directly
+   as the process launcher and inspect the shebang. Shebangs are
+   interpreted as by the OS, except that the variable ``$LAUNCHDIR``
+   is expanded, so that one can do::
+
+       #!${ORIGIN}/python
+
 **Process redirection (useful for relative sys.path for Python)**:
    Since the program is an executable and not a script, if ``hdist-launcher``
    is used to execute Python then it will first look in a location relative
    to the launcher executable for its libraries (``../lib/``), and if found
    use that as its library path ("the virtualenv technique")
 
-**Relative shebangs**:
-   If a script is launched, then the ``hdist-launcher`` will act
-   directly as the process launcher and inspect the shebang. Shebangs
-   are interpreted as by the OS, except if it has the following form::
-
-       #!hdist-launcher $HDIST_LAUNCH_DIR/bin/python:../../a5df/python/bin/python
-
-   That is, when the shebang starts with ``hdist-launcher``, then a)
-   the interpreter locations are tried in turn, the next one is tried
-   if the previous did not exist; b) ``$HDIST_LAUNCH_DIR`` is expanded
-   to the directory containing ``hdist-launcher``, c) relative paths
-   are interpreted relative to the script.
-
-**Environment control**:
-   For now, the ``HDIST_LAUNCH_DIR`` environment variable is set to the
-   directory containing ``hdist-launcher`` (after resolving symlinks).
-   More environment variable control may be added later if needed.
-
 Usage
 -----
 
-In the same directory as ``hdist-launcher``, one must place a file
-``hdist-launcher.cfg`` that looks like the following::
+When ``hdist-launcher`` is run we go through the following steps:
 
-    # lines starting with # are comments
-    # first line is name of link to hdist-launcher, second is what to
-    # launch relative to the location of hdist-launcher
-    python ../../python/a5df/bin/python
-    cython cython.script
+**1)**: ``argv[0]`` is used to find the last symlink pointing to
+``hdist-launcher``; e.g., for::
 
-In this case, the ``bin`` directory could look like this::
+    foo -> hdist-launcher
+    bar -> foo
 
-    python -> hdist-launcher
-    cython -> hdist-launcher
-    hdist-launcher.cfg
-    hdist-launcher
+then the last symlink will be ``foo`` if either ``foo`` or ``bar``
+is executed. It will be referred to as ``$launchlink`` below.
+
+**2)**: The launcher looks for the file ``$launchlink.link``.
+That file is read and the contents followed as if it was a symlink,
+i.e. relative paths are relative to the location of the link file
+(the reason for not using a symlink is to avoid cluttering up
+PATH-based auto-completion).
+
+If such a file is not found, it is assumed that the program/script to
+execute is named ``$launchlink.real``.
+
+**3)**: Once the program/script to be launched is decided on, we look
+for the shebang ``#!``. If found, the launcher does the shebang launching
+like the OS except that ``${ORIGIN}`` is expanded to the directory
+containing ``$launchlink``. (Currently only that exact string is expanded,
+obviously this could be improved in the future.)
+
+If a shebang is not found, a simple ``execv`` is done without changing
+``argv``. The consequence of that is that if the program is Python,
+it will think its binary is ``hdist-launcher``, and search for
+``../lib/pythonX.Y`` relative to the ``hdist-launcher`` used.
+
+Testing
+-------
+Set ``HDIST_LAUNCHER_DEBUG=1`` for debug printing. Unit tests in
+``nosetests test_launcher.py``
 
