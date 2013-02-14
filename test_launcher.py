@@ -98,11 +98,16 @@ def test_link_resolution(d):
 
 @fixture
 def test_shebang_parsing(d):
+    # put script.real in a subdir, to make sure LAUNCHDIR translates
+    # to symlink location
+    os.mkdir('subdir')
     def put_script(shebang):
-        with open('script.real', 'w') as f:
+        with open('subdir/script', 'w') as f:
             f.write(shebang)
             f.write('\npayload\n')
 
+    with open('script.link', 'w') as f:
+        f.write('subdir/script')
     os.symlink(_launcher, 'script')
 
     put_script('#!${LAUNCHDIR}/../foo a-${LAUNCHDIR}${LAUNCHDIR}-${LAUNCHDIR}a \t\t  \t')

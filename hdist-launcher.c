@@ -184,14 +184,15 @@ static int expandvars(char *dst, char *src, char *launchdir, size_t n) {
 
 /* return codes: -1 is error; 0 is everything OK but did not find shebang;
    if shebang is found, does an exec */
-static int attempt_shebang_launch(char *program_to_launch, int argc, char **argv) {
+static int attempt_shebang_launch(char *program_to_launch, char *launchdir,
+                                  int argc, char **argv) {
     /* Attempt to open the file to scan for a shebang, which we handle
        ourself.  (If a script is executable but not readable then no
        interpreter can read it anyway; assume such a thing doesn't
        exist.) */
     FILE *f;
-    char shebang[SHEBANG_MAX], interpreter[SHEBANG_MAX], arg[SHEBANG_MAX], launchdir[PATH_MAX];
-    char *r, *s, *interpreter_part, *arg_part = NULL, *basename;
+    char shebang[SHEBANG_MAX], interpreter[SHEBANG_MAX], arg[SHEBANG_MAX];
+    char *r, *s, *interpreter_part, *arg_part = NULL;
     char **new_argv;
     char **p;
     /* read first line */
@@ -216,12 +217,6 @@ static int attempt_shebang_launch(char *program_to_launch, int argc, char **argv
         /* there may be an argument: */
         arg_part = r;
         rstrip(arg_part);
-    }
-    strlcpy(launchdir, program_to_launch, PATH_MAX);
-    splitpath(launchdir, &basename);
-    if (basename == launchdir) {
-        fprintf(stderr, "hdist-launcher.c:ASSERTION FAILED:%d\n", __LINE__);
-        return -1;
     }
     if (expandvars(interpreter, interpreter_part, launchdir, SHEBANG_MAX) != 0) return -1;
     if (arg_part != NULL) {
@@ -305,6 +300,7 @@ int main(int argc, char *argv[]) {
     char buf[PATH_MAX];
     char calling_link[PATH_MAX];
     char program_to_launch[PATH_MAX];
+    char launch_dir[PATH_MAX];
     char *s;
     line = 0;
 
@@ -320,6 +316,14 @@ int main(int argc, char *argv[]) {
     }
     if (debug) fprintf(stderr, "%scaller=%s\n", debug_header, calling_link);
 
+    strlcpy(launch_dir, calling_link, PATH_MAX);
+    splitpath(launch_dir, &s);
+    if (s == launch_dir) {
+        fprintf(stderr, "hdist-launcher.c:ASSERTION FAILED:%d\n", __LINE__);
+        return 127;
+    }
+
+
     /* Open ${calling_link}.link and read the contents */
     if (strlcpy(buf, calling_link, PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
     if (strlcat(buf, ".link", PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
@@ -330,7 +334,7 @@ int main(int argc, char *argv[]) {
         if (strlcat(program_to_launch, ".real", PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
     }
     if (debug) fprintf(stderr, "%sprogram=%s\n", debug_header, program_to_launch);
-    if (attempt_shebang_launch(program_to_launch, argc, argv) == -1) {
+    if (attempt_shebang_launch(program_to_launch, launch_dir, argc, argv) == -1) {
         if (errno == ENOENT) {
             fprintf(stderr, "hdist-launcher:Unable to launch '%s' (%s)", program_to_launch, strerror(errno));
             return 127;
