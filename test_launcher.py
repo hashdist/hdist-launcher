@@ -22,7 +22,7 @@ def execute_link(cmd, path_entry=None):
     env['HDIST_LAUNCHER_DEBUG'] = '1'
     if path_entry is not None:
         env['PATH'] = os.pathsep.join([path_entry, env['PATH']])
-    p = subprocess.Popen(cmd, stderr=subprocess.PIPE, env=env)
+    p = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
     stdout, stderr = p.communicate()
     #print stderr
     result = {}
@@ -36,7 +36,7 @@ def execute_link(cmd, path_entry=None):
             pass
         else:
             result.setdefault(key, []).append(value)
-    return result, p.wait(), stderr.splitlines()
+    return result, p.wait(), stdout.splitlines(), stderr.splitlines(), 
 
 def fixture(func):
     if isgeneratorfunction(func):
@@ -81,7 +81,7 @@ def test_link_resolution(d):
     os.symlink('./foo2', 'foo3')
 
     def doit(cmd, path_entry, prefix):
-        log, ret, lines = execute_link(cmd, path_entry)
+        log, ret, _, lines = execute_link(cmd, path_entry)
         eq_(2, ret)
         eq_(formatlist(['{prefix}/foo3 -> ./foo2',
                         '{prefix}/./foo2 -> {d}/foo1',
@@ -106,16 +106,16 @@ def test_shebang_parsing(d):
     os.symlink(_launcher, 'script')
 
     put_script('#!${ORIGIN}/../foo a-${ORIGIN}${ORIGIN}-${ORIGIN}a \t\t  \t')
-    log, ret, lines = execute_link('./script')
+    log, ret, _, lines = execute_link('./script')
     eq_('./../foo', log['shebang_cmd'][0])
     eq_('a-..-.a', log['shebang_arg'][0])
 
     put_script('#!${ORIGIN}/../foo  \t\t  \t')
-    log, ret, lines = execute_link('./script')
+    log, ret, _, lines = execute_link('./script')
     eq_('', log['shebang_arg'][0])
 
     put_script('#!${ORIGIN}/../foo')
-    log, ret, lines = execute_link('./script')
+    log, ret, _, lines = execute_link('./script')
 
 @fixture
 def test_shebang_running(d):
@@ -131,7 +131,22 @@ def test_shebang_running(d):
     os.symlink(sys.executable, 'link-to-python')
     os.symlink(_launcher, 'script')
 
-    log, ret, lines = execute_link(['./script', 'bar', 'foo'])
+    log, ret, _, lines = execute_link(['./script', 'bar', 'foo'])
     eq_(3, ret)
     eq_('Hello world', lines[-2])
     eq_('./script.real:bar:foo', lines[-1])
+
+@fixture
+def test_program_launching(d):
+    with open('program.link', 'w') as f:
+        f.write("/bin/echo\n")
+    os.symlink(_launcher, 'program')
+    log, ret, outlines, _ = execute_link(['./program', 'hello'])
+    eq_(['hello'], outlines)
+
+@fixture
+def test_direct_execute(d):
+    log, ret, outlines, errlines = execute_link([_launcher])
+    eq_(0, ret)
+    eq_([], outlines)
+    ok_(any('Usage' in x for x in errlines))

@@ -85,16 +85,25 @@ static int resolvelink(const char *path, char *buf, size_t n) {
     }
 }
 
+/* 
+In the event of prev naming a file, not a link (so that there is no last link),
+prev[0] == '\0'.
+*/
 static int get_last_link(char *prev, size_t n) {
+    int no_links = 1;
     char *cur = malloc(n), *next = malloc(n);
     strlcpy(cur, prev, n);
     for (;;) {
         if (resolvelink(cur, next, n) == -1) break;
+        no_links = 0;
         strlcpy(prev, cur, n);
         strlcpy(cur, next, n);
     }
     free(cur);
     free(next);
+    if (no_links) {
+        prev[0] = '\0';
+    }
     return (errno == EINVAL) ? 0 : -1;
 }
 
@@ -154,7 +163,7 @@ static void rstrip(char *s) {
 }
 
 static int expandvars(char *dst, char *src, char *origin, size_t n) {
-    char *p, *q = dst;
+    char *p;
     while ((p = strstr(src, "${ORIGIN}")) != NULL) {
         size_t m = p - src;
         if (m > n - 1) { errno = ENAMETOOLONG; return -1; }
@@ -211,7 +220,7 @@ static int attempt_shebang_launch(char *program_to_launch, int argc, char **argv
     strlcpy(origin, program_to_launch, PATH_MAX);
     splitpath(origin, &basename);
     if (basename == origin) {
-        fprintf("hdist-launcher.c:ASSERTION FAILED:%d\n", __LINE__);
+        fprintf(stderr, "hdist-launcher.c:ASSERTION FAILED:%d\n", __LINE__);
         return -1;
     }
     if (expandvars(interpreter, interpreter_part, origin, SHEBANG_MAX) != 0) return -1;
@@ -273,6 +282,11 @@ static int resolve_link_in_textfile(char *filename, char *out, size_t n) {
     return 0;
 }
 
+static void help() {
+    fprintf(stderr, "Usage: You should set up symlinks to hdist-launcher.\n\n");
+    fprintf(stderr, "See README on http://github.com/hashdist/hdist-launcher\n");
+}
+
 int main(int argc, char *argv[]) {
     char buf[PATH_MAX];
     char calling_link[PATH_MAX];
@@ -286,6 +300,10 @@ int main(int argc, char *argv[]) {
     /* Find calling link */
     if (debug) fprintf(stderr, "%sFinding calling link, argv[0]='%s'\n", debug_header, argv[0]);
     if (get_calling_link(argv[0], calling_link, PATH_MAX) != 0) { line = __LINE__; goto error; }
+    if (calling_link[0] == '\0') {
+        help();
+        return 0;
+    }
     if (debug) fprintf(stderr, "%scaller=%s\n", debug_header, calling_link);
 
     /* Open ${calling_link}.link and read the contents */
