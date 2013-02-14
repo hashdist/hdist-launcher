@@ -240,20 +240,15 @@ static int attempt_shebang_launch(char *program_to_launch, char *launchdir,
     while (*argv) *p++ = *argv++;
     *p = NULL;
     
-    /* The interpreter string may contain : to separate many possible interpreters */
+    /* The interpreter string may contain : to separate many possible interpreters;
+       try them in turn. */
     s = interpreter;
     for (;;) {
         r = strstr(s, ":");
-        if (r == NULL) {
-            fprintf(stderr, "attempting %s\n", s);
-            new_argv[0] = s;
-            execv(s, new_argv);
-            break;
-        }
-        r[0] = '\0';
-        fprintf(stderr, "attempting %s\n", s);
+        if (r != NULL) r[0] = '\0';
         new_argv[0] = s;
         execv(s, new_argv);
+        if (r == NULL) break;
         s = r + 1;
     }
     /* failed to execute */
