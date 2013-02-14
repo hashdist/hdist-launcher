@@ -50,7 +50,7 @@ static void splitpath(char *path, char **basename) {
     while (path[i] != '/' && i > 0) i--;
     if (path[i] != '/') {
         /* no / in string */
-        if (basename) *basename = *path;
+        if (basename) *basename = path;
     } else {
         path[i] = '\0'; /* cut string in two */
         if (basename) *basename = path + i + 1;
@@ -144,46 +144,139 @@ static void skip_whites(char **r) {
 }
 
 static void skip_nonwhites(char **r) {
-    while (**r != ' ' && **r != '\t' && **r != '\0') ++*r;
+    while (**r != ' ' && **r != '\t' && **r != '\n' && **r != '\0') ++*r;
 }
 
-static int attempt_shebang_launch(char *program_to_launch, char **argv) {
+static void rstrip(char *s) {
+    char *r = s + strlen(s);
+    if (s != r) r--;
+    while (r >= s && (*r == '\n' || *r == ' ' || *r == '\t')) *r-- = '\0';
+}
+
+static int expandvars(char *dst, char *src, char *origin, size_t n) {
+    char *p, *q = dst;
+    while ((p = strstr(src, "${ORIGIN}")) != NULL) {
+        size_t m = p - src;
+        if (m > n - 1) { errno = ENAMETOOLONG; return -1; }
+        strncpy(dst, src, m); /* note: strncpy; does not 0-terminate src */
+        dst += m;
+        n -= m;
+
+        m = strlen(origin);
+        strlcpy(dst, origin, n);
+        dst += m;
+        n -= m;
+
+        src = p + strlen("${ORIGIN}");
+    }
+    strlcpy(dst, src, n);
+    return 0;
+}
+
+/* return codes: -1 is error; 0 is everything OK but did not find shebang;
+   if shebang is found, does an exec */
+static int attempt_shebang_launch(char *program_to_launch, int argc, char **argv) {
     /* Attempt to open the file to scan for a shebang, which we handle
        ourself.  (If a script is executable but not readable then no
        interpreter can read it anyway; assume such a thing doesn't
        exist.) */
     FILE *f;
-    char shebang[SHEBANG_MAX];
-    char *r, *interpreter, *arg;
+    char shebang[SHEBANG_MAX], interpreter[SHEBANG_MAX], arg[SHEBANG_MAX], origin[PATH_MAX];
+    char *r, *interpreter_part, *arg_part = NULL, *basename;
+    char **new_argv;
+    char **p;
     /* read first line */
     if ((f = fopen(program_to_launch, "r")) == NULL) return -1;
     r = fgets(shebang, SHEBANG_MAX, f);
     fclose(f);
     if (r == NULL) return -1;
-
     /* Reference: http://homepages.cwi.nl/~aeb/std/hashexclam.html */
     /* TODO: There's a Mac OS X special case on interpreter handling.. */
 
     /* shebang header */
-    if (r[0] != '#' || r[1] != '!') return -1;
+    if (r[0] != '#' || r[1] != '!') return 0; /* shebang not present return code */
+    r += 2;
     skip_whites(&r);
     if (r == '\0') return -1;
-    interpreter = r;
+    interpreter_part = r;
     skip_nonwhites(&r);
     if (*r != '\0') {
         *r = '\0'; /* terminate 'interpreter' string */
         ++r;
         skip_whites(&r);
         /* there may be an argument: */
+        arg_part = r;
+        rstrip(arg_part);
     }
+    strlcpy(origin, program_to_launch, PATH_MAX);
+    splitpath(origin, &basename);
+    if (basename == origin) {
+        fprintf("hdist-launcher.c:ASSERTION FAILED:%d\n", __LINE__);
+        return -1;
+    }
+    if (expandvars(interpreter, interpreter_part, origin, SHEBANG_MAX) != 0) return -1;
+    if (arg_part != NULL) {
+        if (expandvars(arg, arg_part, origin, SHEBANG_MAX) != 0) return -1;
+    } else {
+        arg[0] = '\0';
+    }
+    if (debug) {
+        fprintf(stderr, "%sshebang_cmd=%s\n", debug_header, interpreter);
+        fprintf(stderr, "%sshebang_arg=%s\n", debug_header, arg);
+    }
+
+    /* Done parsing, do launch */
+    new_argv = malloc(sizeof(char*) * (argc + 3));
+    p = new_argv;
+    *p++ = interpreter;
+    if (arg[0]) *p++ = arg;
+    /* substitute argv[0] with program_to_launch */
+    argv++;
+    *p++ = program_to_launch;
+    while (*argv) *p++ = *argv++;
+    *p = NULL;
     
+    execv(interpreter, new_argv);
+    /* failed to execute */
+    fprintf(stderr, "FAILED '%s' '%s'\n", interpreter, new_argv[0]);
+    free(new_argv);
+    return -1;
+}
+
+static int resolve_link_in_textfile(char *filename, char *out, size_t n) {
+    FILE *f;
+    size_t m;
+    char *s;
+    if ((f = fopen(filename, "r")) == NULL) { line = __LINE__; return -1; }
+    if (fgets(out, n, f) == NULL) { 
+        fclose(f);
+        errno = ENAMETOOLONG; line = __LINE__;
+        return -1;
+    }
+    fclose(f);
+    m = strlen(out);
+    if (out[m - 1] == '\n') out[m - 1] = '\0';
+    if (out[0] != '/') {
+        /* path is relative to file location */
+        splitpath(filename, &s);
+        if (filename != s) {
+            char saved = s[0];
+            s[-1] = '/';
+            s[0] = '\0';
+            if (strlprepend(out, filename, PATH_MAX) >= PATH_MAX) {
+                errno = ENAMETOOLONG; line = __LINE__;
+                return -1;
+            }
+            s[0] = saved;
+        }
+    }
+    return 0;
 }
 
 int main(int argc, char *argv[]) {
+    char buf[PATH_MAX];
     char calling_link[PATH_MAX];
     char program_to_launch[PATH_MAX];
-    size_t n;
-    FILE *f = NULL;
     char *s;
     line = 0;
 
@@ -196,35 +289,30 @@ int main(int argc, char *argv[]) {
     if (debug) fprintf(stderr, "%scaller=%s\n", debug_header, calling_link);
 
     /* Open ${calling_link}.link and read the contents */
-    if (strlcat(calling_link, ".link", PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
-    if ((f = fopen(calling_link, "r")) == NULL) { 
-        fprintf(stderr, "hdist-launcher:Cannot open '%s'\n", calling_link);
-        return 2;
+    if (strlcpy(buf, calling_link, PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
+    if (strlcat(buf, ".link", PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
+    if (resolve_link_in_textfile(buf, program_to_launch, PATH_MAX) != 0) {
+        if (errno != ENOENT) goto error;
+        /* ${calling_link}.link not found, use ${calling_link}.real */
+        if (strlcpy(program_to_launch, calling_link, PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
+        if (strlcat(program_to_launch, ".real", PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
     }
-    if (fgets(program_to_launch, PATH_MAX, f) == NULL) { line = __LINE__; goto error; }
-    fclose(f);
-    f = NULL;
-    n = strlen(program_to_launch);
-    if (program_to_launch[n - 1] == '\n') {
-        program_to_launch[n - 1] = '\0';
+    if (debug) fprintf(stderr, "%sprogram=%s\n", debug_header, program_to_launch);
+    if (attempt_shebang_launch(program_to_launch, argc, argv) == -1) {
+        if (errno == ENOENT) {
+            fprintf(stderr, "hdist-launcher:Unable to launch '%s' (%s)", program_to_launch, strerror(errno));
+            return 2;
+        }
+        goto error;
     }
-
-    /* If program_to_launch is relative, it is relative to calling link */
-    if (program_to_launch[0] != '/') {
-        splitpath(calling_link, &s);
-        s[-1] = '/';
-        s[0] = '\0';
-        strlprepend(program_to_launch, calling_link, PATH_MAX);
-    }
-
-    attempt_shebang_launch(program_to_launch, argv);
+    /* shebang not present */
     execv(program_to_launch, argv);
-    fprintf(stderr, "hdist-launcher: Unable to launch '%s' (%s)\n", program_to_launch,
+    fprintf(stderr, "hdist-launcher:Unable to launch '%s' (%s)\n", program_to_launch,
             strerror(errno));
+    return 2;
     goto error;
 
  error:
-    if (f != NULL) fclose(f);
     fprintf(stderr, "hdist-launcher.c:%d:%s:\n", line, strerror(errno));
     return 1;
 
