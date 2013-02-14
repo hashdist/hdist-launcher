@@ -105,23 +105,23 @@ def test_shebang_parsing(d):
 
     os.symlink(_launcher, 'script')
 
-    put_script('#!${ORIGIN}/../foo a-${ORIGIN}${ORIGIN}-${ORIGIN}a \t\t  \t')
+    put_script('#!${LAUNCHDIR}/../foo a-${LAUNCHDIR}${LAUNCHDIR}-${LAUNCHDIR}a \t\t  \t')
     log, ret, _, lines = execute_link('./script')
     eq_('./../foo', log['shebang_cmd'][0])
     eq_('a-..-.a', log['shebang_arg'][0])
 
-    put_script('#!${ORIGIN}/../foo  \t\t  \t')
+    put_script('#!${LAUNCHDIR}/../foo  \t\t  \t')
     log, ret, _, lines = execute_link('./script')
     eq_('', log['shebang_arg'][0])
 
-    put_script('#!${ORIGIN}/../foo')
+    put_script('#!${LAUNCHDIR}/../foo')
     log, ret, _, lines = execute_link('./script')
 
 @fixture
 def test_shebang_running(d):
     with open('script.real', 'w') as f:
         f.write(dedent('''\
-        #!${ORIGIN}/link-to-python
+        #!${LAUNCHDIR}/link-to-python
         import sys
         print("Hello world")
         print(":".join(sys.argv))
@@ -140,7 +140,7 @@ def test_shebang_running(d):
 def test_shebang_multi(d):
     with open('script.real', 'w') as f:
         f.write(dedent('''\
-        #!${ORIGIN}/link1:${ORIGIN}/link2
+        #!${LAUNCHDIR}/link1:${LAUNCHDIR}/link2
         import sys; sys.exit(3)
         '''))
 

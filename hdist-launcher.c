@@ -162,21 +162,21 @@ static void rstrip(char *s) {
     while (r >= s && (*r == '\n' || *r == ' ' || *r == '\t')) *r-- = '\0';
 }
 
-static int expandvars(char *dst, char *src, char *origin, size_t n) {
+static int expandvars(char *dst, char *src, char *launchdir, size_t n) {
     char *p;
-    while ((p = strstr(src, "${ORIGIN}")) != NULL) {
+    while ((p = strstr(src, "${LAUNCHDIR}")) != NULL) {
         size_t m = p - src;
         if (m > n - 1) { errno = ENAMETOOLONG; return -1; }
         strncpy(dst, src, m); /* note: strncpy; does not 0-terminate src */
         dst += m;
         n -= m;
 
-        m = strlen(origin);
-        strlcpy(dst, origin, n);
+        m = strlen(launchdir);
+        strlcpy(dst, launchdir, n);
         dst += m;
         n -= m;
 
-        src = p + strlen("${ORIGIN}");
+        src = p + strlen("${LAUNCHDIR}");
     }
     strlcpy(dst, src, n);
     return 0;
@@ -190,7 +190,7 @@ static int attempt_shebang_launch(char *program_to_launch, int argc, char **argv
        interpreter can read it anyway; assume such a thing doesn't
        exist.) */
     FILE *f;
-    char shebang[SHEBANG_MAX], interpreter[SHEBANG_MAX], arg[SHEBANG_MAX], origin[PATH_MAX];
+    char shebang[SHEBANG_MAX], interpreter[SHEBANG_MAX], arg[SHEBANG_MAX], launchdir[PATH_MAX];
     char *r, *s, *interpreter_part, *arg_part = NULL, *basename;
     char **new_argv;
     char **p;
@@ -217,15 +217,15 @@ static int attempt_shebang_launch(char *program_to_launch, int argc, char **argv
         arg_part = r;
         rstrip(arg_part);
     }
-    strlcpy(origin, program_to_launch, PATH_MAX);
-    splitpath(origin, &basename);
-    if (basename == origin) {
+    strlcpy(launchdir, program_to_launch, PATH_MAX);
+    splitpath(launchdir, &basename);
+    if (basename == launchdir) {
         fprintf(stderr, "hdist-launcher.c:ASSERTION FAILED:%d\n", __LINE__);
         return -1;
     }
-    if (expandvars(interpreter, interpreter_part, origin, SHEBANG_MAX) != 0) return -1;
+    if (expandvars(interpreter, interpreter_part, launchdir, SHEBANG_MAX) != 0) return -1;
     if (arg_part != NULL) {
-        if (expandvars(arg, arg_part, origin, SHEBANG_MAX) != 0) return -1;
+        if (expandvars(arg, arg_part, launchdir, SHEBANG_MAX) != 0) return -1;
     } else {
         arg[0] = '\0';
     }

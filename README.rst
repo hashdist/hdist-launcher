@@ -15,7 +15,7 @@ Hashdist profiles. It has the following usecases:
    interpreted as by the OS, except that the variable ``$LAUNCHDIR``
    is expanded, so that one can do::
 
-       #!${ORIGIN}/python
+       #!${LAUNCHDIR}/python
 
 **Process redirection (useful for relative sys.path for Python)**:
    Since the program is an executable and not a script, if ``hdist-launcher``
@@ -50,7 +50,7 @@ execute is named ``$launchlink.real``.
 for the shebang ``#!``. If found, the launcher does the shebang launching
 like the OS but with some extra features:
 
-First, ``${ORIGIN}`` is expanded to the directory containing
+First, ``${LAUNCHDIR}`` is expanded to the directory containing
 ``$launchlink``. Currently only that exact string is expanded,
 obviously this could be improved in the future.
 
@@ -59,7 +59,7 @@ tried in turn, separated by ``:``.
 
 Example::
 
-    #!${ORIGIN}/python:${ORIGIN}/../../../python/xkl4/bin/python
+    #!${LAUNCHDIR}/python:${LAUNCHDIR}/../../../python/xkl4/bin/python
     import sys
     ...
 
