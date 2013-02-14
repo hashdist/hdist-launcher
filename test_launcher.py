@@ -82,7 +82,7 @@ def test_link_resolution(d):
 
     def doit(cmd, path_entry, prefix):
         log, ret, _, lines = execute_link(cmd, path_entry)
-        eq_(2, ret)
+        eq_(127, ret)
         eq_(formatlist(['{prefix}/foo3 -> ./foo2',
                         '{prefix}/./foo2 -> {d}/foo1',
                         '{d}/foo1 -> foo0',
@@ -123,18 +123,36 @@ def test_shebang_running(d):
         f.write(dedent('''\
         #!${ORIGIN}/link-to-python
         import sys
-        sys.stderr.write("Hello world\\n")
-        sys.stderr.write(":".join(sys.argv))
+        print("Hello world")
+        print(":".join(sys.argv))
         sys.exit(3)
         '''))
 
     os.symlink(sys.executable, 'link-to-python')
     os.symlink(_launcher, 'script')
 
-    log, ret, _, lines = execute_link(['./script', 'bar', 'foo'])
+    log, ret, outlines, _ = execute_link(['./script', 'bar', 'foo'])
     eq_(3, ret)
-    eq_('Hello world', lines[-2])
-    eq_('./script.real:bar:foo', lines[-1])
+    eq_(['Hello world', './script.real:bar:foo'], outlines)
+
+
+@fixture
+def test_shebang_multi(d):
+    with open('script.real', 'w') as f:
+        f.write(dedent('''\
+        #!${ORIGIN}/link1:${ORIGIN}/link2
+        import sys; sys.exit(3)
+        '''))
+
+    os.symlink(sys.executable, 'link1')
+    os.symlink(_launcher, 'script')
+    _, ret, out, err = execute_link(['./script'])
+    eq_(3, ret)
+    os.unlink('link1')
+    os.symlink(sys.executable, 'link2')
+    log, ret, _, lines = execute_link(['./script'])
+    eq_(3, ret)
+    
 
 @fixture
 def test_program_launching(d):

@@ -48,14 +48,31 @@ execute is named ``$launchlink.real``.
 
 **3)**: Once the program/script to be launched is decided on, we look
 for the shebang ``#!``. If found, the launcher does the shebang launching
-like the OS except that ``${ORIGIN}`` is expanded to the directory
-containing ``$launchlink``. (Currently only that exact string is expanded,
-obviously this could be improved in the future.)
+like the OS but with some extra features:
+
+First, ``${ORIGIN}`` is expanded to the directory containing
+``$launchlink``. Currently only that exact string is expanded,
+obviously this could be improved in the future.
+
+Secondly, it is allowed to have multiple interpreters that will be
+tried in turn, separated by ``:``.
+
+Example::
+
+    #!${ORIGIN}/python:${ORIGIN}/../../../python/xkl4/bin/python
+    import sys
+    ...
 
 If a shebang is not found, a simple ``execv`` is done without changing
 ``argv``. The consequence of that is that if the program is Python,
 it will think its binary is ``hdist-launcher``, and search for
 ``../lib/pythonX.Y`` relative to the ``hdist-launcher`` used.
+
+Other
+-----
+
+Errors in the launcher causes return with code 127.
+
 
 Testing
 -------

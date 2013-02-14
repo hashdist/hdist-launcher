@@ -191,7 +191,7 @@ static int attempt_shebang_launch(char *program_to_launch, int argc, char **argv
        exist.) */
     FILE *f;
     char shebang[SHEBANG_MAX], interpreter[SHEBANG_MAX], arg[SHEBANG_MAX], origin[PATH_MAX];
-    char *r, *interpreter_part, *arg_part = NULL, *basename;
+    char *r, *s, *interpreter_part, *arg_part = NULL, *basename;
     char **new_argv;
     char **p;
     /* read first line */
@@ -237,7 +237,7 @@ static int attempt_shebang_launch(char *program_to_launch, int argc, char **argv
     /* Done parsing, do launch */
     new_argv = malloc(sizeof(char*) * (argc + 3));
     p = new_argv;
-    *p++ = interpreter;
+    p++; /* we'll set interpreter below */
     if (arg[0]) *p++ = arg;
     /* substitute argv[0] with program_to_launch */
     argv++;
@@ -245,9 +245,23 @@ static int attempt_shebang_launch(char *program_to_launch, int argc, char **argv
     while (*argv) *p++ = *argv++;
     *p = NULL;
     
-    execv(interpreter, new_argv);
+    /* The interpreter string may contain : to separate many possible interpreters */
+    s = interpreter;
+    for (;;) {
+        r = strstr(s, ":");
+        if (r == NULL) {
+            fprintf(stderr, "attempting %s\n", s);
+            new_argv[0] = s;
+            execv(s, new_argv);
+            break;
+        }
+        r[0] = '\0';
+        fprintf(stderr, "attempting %s\n", s);
+        new_argv[0] = s;
+        execv(s, new_argv);
+        s = r + 1;
+    }
     /* failed to execute */
-    fprintf(stderr, "FAILED '%s' '%s'\n", interpreter, new_argv[0]);
     free(new_argv);
     return -1;
 }
@@ -319,7 +333,7 @@ int main(int argc, char *argv[]) {
     if (attempt_shebang_launch(program_to_launch, argc, argv) == -1) {
         if (errno == ENOENT) {
             fprintf(stderr, "hdist-launcher:Unable to launch '%s' (%s)", program_to_launch, strerror(errno));
-            return 2;
+            return 127;
         }
         goto error;
     }
@@ -327,11 +341,11 @@ int main(int argc, char *argv[]) {
     execv(program_to_launch, argv);
     fprintf(stderr, "hdist-launcher:Unable to launch '%s' (%s)\n", program_to_launch,
             strerror(errno));
-    return 2;
+    return 127;
     goto error;
 
  error:
     fprintf(stderr, "hdist-launcher.c:%d:%s:\n", line, strerror(errno));
-    return 1;
+    return 127;
 
 }
