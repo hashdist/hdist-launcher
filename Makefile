@@ -1,8 +1,8 @@
 
 
-hdist-launcher: hdist-launcher.c
-	gcc -g -Os -Wall -Wno-unused-function -o hdist-launcher hdist-launcher.c
-	strip hdist-launcher
+launcher: launcher.c
+	gcc -g -Os -Wall -Wno-unused-function -o launcher launcher.c
+	strip launcher
 
 clean:
-	rm -f hdist-launcher hdist-launcher.o
+	rm -f launcher launcher.o

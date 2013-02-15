@@ -27,7 +27,7 @@ def execute_link(cmd, path_entry=None):
     #print stderr
     result = {}
     for line in stderr.splitlines():
-        line = strip_prefix("hdist-launcher:DEBUG:", line)
+        line = strip_prefix("launcher:DEBUG:", line)
         if line is None:
             continue
         try:
@@ -68,10 +68,14 @@ def fixture(func):
 def setup():
     global _launcher
     subprocess.check_call(['make'])
-    _launcher = os.path.realpath('hdist-launcher')
+    _launcher = os.path.realpath('launcher')
 
 def formatlist(lst, **vars):
     return [item.format(**vars) for item in lst]
+
+def touch(filename):
+    with open(filename, 'w') as f:
+        pass
 
 @fixture
 def test_link_resolution(d):
@@ -88,7 +92,7 @@ def test_link_resolution(d):
                         '{d}/foo1 -> foo0',
                         '{d}/foo0 -> {_launcher}'], prefix=prefix, d=d, _launcher=_launcher),
             log['readlink'])
-        ok_(lines[-1].startswith("hdist-launcher:Unable to launch '%s/foo0.real'" % d),
+        ok_(lines[-1].startswith("launcher:Unable to launch '%s/foo0.real'" % d),
             lines[-1])
 
     yield doit, ['./foo3'], None, '.'
@@ -97,36 +101,70 @@ def test_link_resolution(d):
     yield doit, [pjoin(d, 'foo3')], None, d
 
 @fixture
+def test_profile_bin_dir(d):
+    os.mkdir(pjoin(d, '1'))
+    os.mkdir(pjoin(d, '2'))
+    os.mkdir(pjoin(d, '3'))
+
+    os.symlink(_launcher, pjoin(d, '1', 'foo'))
+    os.symlink(pjoin(d, '1', 'foo'), pjoin(d, '2', 'foo'))
+    os.symlink(pjoin(d, '2', 'foo'), pjoin(d, '3', 'foo'))
+
+    log, ret, out, err = execute_link([pjoin(d, '3', 'foo')])
+    assert log['PROFILE_BIN_DIR'] == ['']
+
+    for p in ['1', '2', '3']:
+        touch(pjoin(d, p, 'is-profile'))
+        log, ret, out, err = execute_link([pjoin(d, '3', 'foo')])
+        assert log['PROFILE_BIN_DIR'] == [pjoin(d, p)]
+
+
+@fixture
 def test_shebang_parsing(d):
-    # put script.real in a subdir, to make sure LAUNCHDIR translates
-    # to symlink location
-    os.mkdir('subdir')
+    # put script.real in a subdir, to make sure ORIGIN translates
+    # to file location
+    os.mkdir('realdir')
+    os.mkdir('linkdir')
     def put_script(shebang):
-        with open('subdir/script', 'w') as f:
+        with open('realdir/script', 'w') as f:
             f.write(shebang)
             f.write('\npayload\n')
+    os.symlink('../realdir/script', 'linkdir/script')
 
     with open('script.link', 'w') as f:
-        f.write('subdir/script')
+        f.write('linkdir/script')
     os.symlink(_launcher, 'script')
 
-    put_script('#!${LAUNCHDIR}/../foo a-${LAUNCHDIR}${LAUNCHDIR}-${LAUNCHDIR}a \t\t  \t')
-    log, ret, _, lines = execute_link('./script')
-    eq_('./../foo', log['shebang_cmd'][0])
-    eq_('a-..-.a', log['shebang_arg'][0])
+    put_script('#!${ORIGIN}/../foo a-${ORIGIN}${ORIGIN}-${ORIGIN}a \t\t  \t')
 
-    put_script('#!${LAUNCHDIR}/../foo  \t\t  \t')
     log, ret, _, lines = execute_link('./script')
+    eq_('{d}/realdir/../foo'.format(d=d), log['shebang_cmd'][0])
+    eq_('a-{d}/realdir{d}/realdir-{d}/realdira'.format(d=d), log['shebang_arg'][0])
+
+    put_script('#!${ORIGIN}/../foo  \t\t  \t')
+    log, ret, _, lines = execute_link('./script')
+    eq_('{d}/realdir/../foo'.format(d=d), log['shebang_cmd'][0])
     eq_('', log['shebang_arg'][0])
 
-    put_script('#!${LAUNCHDIR}/../foo')
+    put_script('#!${ORIGIN}/../foo')
     log, ret, _, lines = execute_link('./script')
+    eq_('{d}/realdir/../foo'.format(d=d), log['shebang_cmd'][0])
+
+    put_script('#!${PROFILE_BIN_DIR}/../foo')
+    log, ret, _, lines = execute_link('./script')
+    eq_('__NA__/../foo', log['shebang_cmd'][0])
+
+    touch('is-profile')
+    put_script('#!${PROFILE_BIN_DIR}/../foo')
+    log, ret, _, lines = execute_link('./script')
+    eq_('./../foo', log['shebang_cmd'][0])
+
 
 @fixture
 def test_shebang_running(d):
     with open('script.real', 'w') as f:
         f.write(dedent('''\
-        #!${LAUNCHDIR}/link-to-python
+        #!${ORIGIN}/link-to-python
         import sys
         print("Hello world")
         print(":".join(sys.argv))
@@ -145,7 +183,7 @@ def test_shebang_running(d):
 def test_shebang_multi(d):
     with open('script.real', 'w') as f:
         f.write(dedent('''\
-        #!${LAUNCHDIR}/link1:${LAUNCHDIR}/link2
+        #!${ORIGIN}/link1:${ORIGIN}/link2
         import sys; sys.exit(3)
         '''))
 

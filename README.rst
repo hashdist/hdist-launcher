@@ -50,16 +50,17 @@ execute is named ``$launchlink.real``.
 for the shebang ``#!``. If found, the launcher does the shebang launching
 like the OS but with some extra features:
 
-First, ``${LAUNCHDIR}`` is expanded to the directory containing
-``$launchlink``. Currently only that exact string is expanded,
-obviously this could be improved in the future.
+**Variable expansion**: ``${ORIGIN}`` is expanded to the real path
+(using ``realpath()``) of the directory containing the script.
+``${PROFILE_BIN_DIR}`` is expanded to the *first* directory in
+the chain of links to contain a file named ``is-profile``.
 
 Secondly, it is allowed to have multiple interpreters that will be
 tried in turn, separated by ``:``.
 
 Example::
 
-    #!${LAUNCHDIR}/python:${LAUNCHDIR}/../../../python/xkl4/bin/python
+    #!${PROFILE_BIN_DIR}/python:${ORIGIN}/../../../python/xkl4/bin/python
     import sys
     ...
 

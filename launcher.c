@@ -11,7 +11,7 @@
 
 static int line; /* error line number for error reporting */
 static int debug; /* debug flag */
-static const char *debug_header = "hdist-launcher:DEBUG:";
+static const char *debug_header = "launcher:DEBUG:";
 
 /* Looks up a given program basename in PATH. */
 static int find_in_path(char *progname, char *path, char *result, size_t n) {
@@ -88,12 +88,32 @@ static int resolvelink(const char *path, char *buf, size_t n) {
 /* 
 In the event of prev naming a file, not a link (so that there is no last link),
 prev[0] == '\0'.
+
+Also searchs for the ${PROFILE_BIN_DIR}, which is the *first* directory on the
+link chain containing a readable file "is-profile". If this is not found,
+profile_bin_dir[0] == 0.
 */
-static int get_last_link(char *prev, size_t n) {
+static int follow_links(char *prev, char *profile_bin_dir, size_t n) {
     int no_links = 1;
-    char *cur = malloc(n), *next = malloc(n);
+    char *cur = malloc(n), *next = malloc(n), *basename;
+    profile_bin_dir[0] = '\0';
     strlcpy(cur, prev, n);
     for (;;) {
+        /* look for "is-profile" marker */
+        if (profile_bin_dir[0] == '\0') {
+
+            splitpath(cur, &basename);
+            if (basename != cur) {
+                strlcpy(profile_bin_dir, cur, n);
+                strlcat(profile_bin_dir, "/is-profile", n);
+                if (access(profile_bin_dir, R_OK) == 0) {
+                    strlcpy(profile_bin_dir, cur, n);
+                } else {
+                    profile_bin_dir[0] = '\0';
+                }
+                basename[-1] = '/'; /* reassemble the path */
+            }
+        }
         if (resolvelink(cur, next, n) == -1) break;
         no_links = 0;
         strlcpy(prev, cur, n);
@@ -105,18 +125,6 @@ static int get_last_link(char *prev, size_t n) {
         prev[0] = '\0';
     }
     return (errno == EINVAL) ? 0 : -1;
-}
-
-static int get_calling_link(char *argv0, char *calling_link, size_t n) {
-    if (strstr(argv0, "/")) {
-        strlcpy(calling_link, argv0, n);
-        return get_last_link(calling_link, n);
-    } else {
-        /* need to look up in PATH */
-        char buf[PATH_MAX];
-        if (find_in_path(argv0, getenv("PATH"), buf, PATH_MAX) != 0) return -1;
-        return get_calling_link(buf, calling_link, n);
-    }
 }
 
 static int get_dir_of(char *filename, char *containing_dir) {
@@ -162,29 +170,67 @@ static void rstrip(char *s) {
     while (r >= s && (*r == '\n' || *r == ' ' || *r == '\t')) *r-- = '\0';
 }
 
-static int expandvars(char *dst, char *src, char *launchdir, size_t n) {
-    char *p;
-    while ((p = strstr(src, "${LAUNCHDIR}")) != NULL) {
-        size_t m = p - src;
-        if (m > n - 1) { errno = ENAMETOOLONG; return -1; }
-        strncpy(dst, src, m); /* note: strncpy; does not 0-terminate src */
-        dst += m;
-        n -= m;
 
-        m = strlen(launchdir);
-        strlcpy(dst, launchdir, n);
-        dst += m;
-        n -= m;
+/* expandvars states */
+#define _EV_STATE_CHARS 0
+#define _EV_STATE_VARNAME 1
+#define _EV_MAXVARLEN 40
 
-        src = p + strlen("${LAUNCHDIR}");
+static int expandvars(char *dst, char *src, char *origin, char *profile_bin_dir, size_t n) {
+    char varname[_EV_MAXVARLEN];
+    int varlen = 0;
+    int state = _EV_STATE_CHARS;
+    while (*src != '\0' && n > 0) {
+        switch (state) {
+        case _EV_STATE_CHARS:
+            if (*src != '$') { *dst++ = *src++; n--; }
+            else {
+                src++;
+                if (*src++ != '{') {
+                    fprintf(stderr, "launcher:Shebang variables must have form ${VARNAME}\n");
+                    return -1;
+                }
+                state = _EV_STATE_VARNAME;
+                varlen = 0;
+            }
+            break;
+        case _EV_STATE_VARNAME:
+            if (varlen == _EV_MAXVARLEN - 1) goto toolong;
+            if (*src != '}') { varname[varlen] = *src++; varlen++; }
+            else {
+                size_t m;
+                char *value;
+                varname[varlen] = '\0';
+                if (strcmp(varname, "ORIGIN") == 0) {
+                    value = origin;
+                } else if (strcmp(varname, "PROFILE_BIN_DIR") == 0) {
+                    value = profile_bin_dir;
+                } else {
+                    fprintf(stderr, "launcher:Unknown variable '%s' in shebang\n", varname);
+                    return -1;
+                }
+                m = strlen(value);
+                if (m > n) goto toolong;
+                strlcpy(dst, value, n);
+                dst += m;
+                n -= m;
+
+                state = _EV_STATE_CHARS;
+                src++;
+            }
+        }
     }
-    strlcpy(dst, src, n);
+    if (n == 0) goto toolong;
     return 0;
+ toolong:
+    fprintf(stderr, "launcher:Too long string encountered in shebang parsing\n");
+    return -1;
+
 }
 
 /* return codes: -1 is error; 0 is everything OK but did not find shebang;
    if shebang is found, does an exec */
-static int attempt_shebang_launch(char *program_to_launch, char *launchdir,
+static int attempt_shebang_launch(char *program_to_launch, char *origin, char *profile_bin_dir,
                                   int argc, char **argv) {
     /* Attempt to open the file to scan for a shebang, which we handle
        ourself.  (If a script is executable but not readable then no
@@ -218,9 +264,9 @@ static int attempt_shebang_launch(char *program_to_launch, char *launchdir,
         arg_part = r;
         rstrip(arg_part);
     }
-    if (expandvars(interpreter, interpreter_part, launchdir, SHEBANG_MAX) != 0) return -1;
+    if (expandvars(interpreter, interpreter_part, origin, profile_bin_dir, SHEBANG_MAX) != 0) return -1;
     if (arg_part != NULL) {
-        if (expandvars(arg, arg_part, launchdir, SHEBANG_MAX) != 0) return -1;
+        if (expandvars(arg, arg_part, origin, profile_bin_dir, SHEBANG_MAX) != 0) return -1;
     } else {
         arg[0] = '\0';
     }
@@ -287,7 +333,7 @@ static int resolve_link_in_textfile(char *filename, char *out, size_t n) {
 }
 
 static void help() {
-    fprintf(stderr, "Usage: You should set up symlinks to hdist-launcher.\n\n");
+    fprintf(stderr, "Usage: You should set up symlinks to launcher.\n\n");
     fprintf(stderr, "See README on http://github.com/hashdist/hdist-launcher\n");
 }
 
@@ -295,29 +341,36 @@ int main(int argc, char *argv[]) {
     char buf[PATH_MAX];
     char calling_link[PATH_MAX];
     char program_to_launch[PATH_MAX];
-    char launch_dir[PATH_MAX];
+    char origin[PATH_MAX];
+    char profile_bin_dir[PATH_MAX];
     char *s;
     line = 0;
 
     s = getenv("HDIST_LAUNCHER_DEBUG");
     debug = (s != NULL && strcmp(s, "1") == 0);
 
+
+    if (strstr(argv[0], "/") == NULL) {
+        /* Launched through PATH lookup */
+        if (find_in_path(argv[0], getenv("PATH"), calling_link, PATH_MAX) != 0) return -1;
+    } else {
+        strlcpy(calling_link, argv[0], PATH_MAX);
+    }
+
+
     /* Find calling link */
-    if (debug) fprintf(stderr, "%sFinding calling link, argv[0]='%s'\n", debug_header, argv[0]);
-    if (get_calling_link(argv[0], calling_link, PATH_MAX) != 0) { line = __LINE__; goto error; }
+    if (debug) fprintf(stderr, "%sstart='%s'\n", debug_header, calling_link);
+    if (follow_links(calling_link, profile_bin_dir, PATH_MAX) != 0) { line = __LINE__; goto error; }
     if (calling_link[0] == '\0') {
         help();
         return 0;
     }
     if (debug) fprintf(stderr, "%scaller=%s\n", debug_header, calling_link);
+    if (debug) fprintf(stderr, "%sPROFILE_BIN_DIR=%s\n", debug_header, profile_bin_dir);
 
-    strlcpy(launch_dir, calling_link, PATH_MAX);
-    splitpath(launch_dir, &s);
-    if (s == launch_dir) {
-        fprintf(stderr, "hdist-launcher.c:ASSERTION FAILED:%d\n", __LINE__);
-        return 127;
+    if (profile_bin_dir[0] == '\0') {
+        strlcpy(profile_bin_dir, "__NA__", PATH_MAX);
     }
-
 
     /* Open ${calling_link}.link and read the contents */
     if (strlcpy(buf, calling_link, PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
@@ -328,23 +381,37 @@ int main(int argc, char *argv[]) {
         if (strlcpy(program_to_launch, calling_link, PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
         if (strlcat(program_to_launch, ".real", PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
     }
+
+    /* Find ${ORIGIN}; we need to resolve realpath() of program to launch */
+    if (realpath(program_to_launch, origin) == NULL) {
+        strlcpy(origin, "__NA__", PATH_MAX);
+    } else {
+        splitpath(origin, &s);
+        if (s == origin) {
+            fprintf(stderr, "%sASSERTION FAILED, LINE %d\n", debug_header, __LINE__);
+            return 127;
+        }
+    }
+    
+    if (debug) fprintf(stderr, "%sORIGIN=%s\n", debug_header, origin);
+
     if (debug) fprintf(stderr, "%sprogram=%s\n", debug_header, program_to_launch);
-    if (attempt_shebang_launch(program_to_launch, launch_dir, argc, argv) == -1) {
+    if (attempt_shebang_launch(program_to_launch, origin, profile_bin_dir, argc, argv) == -1) {
         if (errno == ENOENT) {
-            fprintf(stderr, "hdist-launcher:Unable to launch '%s' (%s)", program_to_launch, strerror(errno));
+            fprintf(stderr, "launcher:Unable to launch '%s' (%s)", program_to_launch, strerror(errno));
             return 127;
         }
         goto error;
     }
     /* shebang not present */
     execv(program_to_launch, argv);
-    fprintf(stderr, "hdist-launcher:Unable to launch '%s' (%s)\n", program_to_launch,
+    fprintf(stderr, "launcher:Unable to launch '%s' (%s)\n", program_to_launch,
             strerror(errno));
     return 127;
     goto error;
 
  error:
-    fprintf(stderr, "hdist-launcher.c:%d:%s:\n", line, strerror(errno));
+    fprintf(stderr, "%s:%d:%s:\n", __FILE__, line, strerror(errno));
     return 127;
 
 }
