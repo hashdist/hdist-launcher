@@ -1,5 +1,5 @@
-hdist-launcher
-==============
+Then Hashdist launcher
+======================
 
 This is a very small program that facilitates launching applications
 from relocateable ``bin`` directories, typically as the result of creating
@@ -9,16 +9,17 @@ Hashdist profiles. It has the following usecases:
 **Relative shebangs**:
    While Unix allows ``$!some/relative/path``, it
    is completely useless, as it uses the CWD(!). Using
-   `hdist-launcher` allows for *proper* relative shebangs.  If a
-   script is launched, then the ``hdist-launcher`` will act directly
+   `launcher` allows for *proper* relative shebangs.  If a
+   script is launched, then the ``launcher`` will act directly
    as the process launcher and inspect the shebang. Shebangs are
-   interpreted as by the OS, except that the variable ``$LAUNCHDIR``
-   is expanded, so that one can do::
+   interpreted as by the OS, except that the variable ``$PROFILE_BIN_DIR``
+   and ``$ORIGIN`` is expanded, and one can try multiple interpreters,
+   so that one can do::
 
-       #!${LAUNCHDIR}/python
+    #!${PROFILE_BIN_DIR}/python:${ORIGIN}/../../../python/xkl4/bin/python
 
-**Process redirection (useful for relative sys.path for Python)**:
-   Since the program is an executable and not a script, if ``hdist-launcher``
+**Process redirection (useful for relocateable sys.prefix for Python)**:
+   Since the program is an executable and not a script, if ``launcher``
    is used to execute Python then it will first look in a location relative
    to the launcher executable for its libraries (``../lib/``), and if found
    use that as its library path ("the virtualenv technique")
@@ -26,12 +27,12 @@ Hashdist profiles. It has the following usecases:
 Usage
 -----
 
-When ``hdist-launcher`` is run we go through the following steps:
+When ``launcher`` is run we go through the following steps:
 
 **1)**: ``argv[0]`` is used to find the last symlink pointing to
-``hdist-launcher``; e.g., for::
+``launcher``; e.g., for::
 
-    foo -> hdist-launcher
+    foo -> launcher
     bar -> foo
 
 then the last symlink will be ``foo`` if either ``foo`` or ``bar``
@@ -66,8 +67,8 @@ Example::
 
 If a shebang is not found, a simple ``execv`` is done without changing
 ``argv``. The consequence of that is that if the program is Python,
-it will think its binary is ``hdist-launcher``, and search for
-``../lib/pythonX.Y`` relative to the ``hdist-launcher`` used.
+it will think its binary is ``launcher``, and search for
+``../lib/pythonX.Y`` relative to the ``launcher`` used.
 
 Other
 -----
