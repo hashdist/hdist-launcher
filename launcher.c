@@ -90,7 +90,7 @@ In the event of prev naming a file, not a link (so that there is no last link),
 prev[0] == '\0'.
 
 Also searchs for the ${PROFILE_BIN_DIR}, which is the *first* directory on the
-link chain containing a readable file "is-profile". If this is not found,
+link chain containing a readable file "is-profile-bin". If this is not found,
 profile_bin_dir[0] == 0.
 */
 static int follow_links(char *prev, char *profile_bin_dir, size_t n) {
@@ -99,13 +99,13 @@ static int follow_links(char *prev, char *profile_bin_dir, size_t n) {
     profile_bin_dir[0] = '\0';
     strlcpy(cur, prev, n);
     for (;;) {
-        /* look for "is-profile" marker */
+        /* look for "is-profile-bin" marker */
         if (profile_bin_dir[0] == '\0') {
 
             splitpath(cur, &basename);
             if (basename != cur) {
                 strlcpy(profile_bin_dir, cur, n);
-                strlcat(profile_bin_dir, "/is-profile", n);
+                strlcat(profile_bin_dir, "/is-profile-bin", n);
                 if (access(profile_bin_dir, R_OK) == 0) {
                     strlcpy(profile_bin_dir, cur, n);
                 } else {

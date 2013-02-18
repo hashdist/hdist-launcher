@@ -114,7 +114,7 @@ def test_profile_bin_dir(d):
     assert log['PROFILE_BIN_DIR'] == ['']
 
     for p in ['1', '2', '3']:
-        touch(pjoin(d, p, 'is-profile'))
+        touch(pjoin(d, p, 'is-profile-bin'))
         log, ret, out, err = execute_link([pjoin(d, '3', 'foo')])
         assert log['PROFILE_BIN_DIR'] == [pjoin(d, p)]
 
@@ -154,7 +154,7 @@ def test_shebang_parsing(d):
     log, ret, _, lines = execute_link('./script')
     eq_('__NA__/../foo', log['shebang_cmd'][0])
 
-    touch('is-profile')
+    touch('is-profile-bin')
     put_script('#!${PROFILE_BIN_DIR}/../foo')
     log, ret, _, lines = execute_link('./script')
     eq_('./../foo', log['shebang_cmd'][0])

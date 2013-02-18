@@ -54,7 +54,7 @@ like the OS but with some extra features:
 **Variable expansion**: ``${ORIGIN}`` is expanded to the real path
 (using ``realpath()``) of the directory containing the script.
 ``${PROFILE_BIN_DIR}`` is expanded to the *first* directory in
-the chain of links to contain a file named ``is-profile``.
+the chain of links to contain a file named ``is-profile-bin``.
 
 Secondly, it is allowed to have multiple interpreters that will be
 tried in turn, separated by ``:``.
