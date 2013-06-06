@@ -30,7 +30,7 @@ static int find_in_path(char *progname, char *path, char *result, size_t n) {
             h[0] = '/';
             h[1] = '\0';
         }
-        strlcat(result, progname, n);
+        hit_strlcat(result, progname, n);
         if (access(result, X_OK) == 0) return 0;
     }
     errno = ENOENT;
@@ -71,7 +71,7 @@ static int resolvelink(const char *path, char *buf, size_t n) {
         return 0;
     } else {
         /* prepend dirname(path) and read the link again */
-        strlcpy(buf, path, n);
+        hit_strlcpy(buf, path, n);
         splitpath(buf, &base);
         if (base == buf) {
             fprintf(stderr, "%sASSERTION FAILED, LINE %d\n", debug_header, __LINE__);
@@ -97,17 +97,17 @@ static int follow_links(char *prev, char *profile_bin_dir, size_t n) {
     int no_links = 1;
     char *cur = malloc(n), *next = malloc(n), *basename;
     profile_bin_dir[0] = '\0';
-    strlcpy(cur, prev, n);
+    hit_strlcpy(cur, prev, n);
     for (;;) {
         /* look for "is-profile-bin" marker */
         if (profile_bin_dir[0] == '\0') {
 
             splitpath(cur, &basename);
             if (basename != cur) {
-                strlcpy(profile_bin_dir, cur, n);
-                strlcat(profile_bin_dir, "/is-profile-bin", n);
+                hit_strlcpy(profile_bin_dir, cur, n);
+                hit_strlcat(profile_bin_dir, "/is-profile-bin", n);
                 if (access(profile_bin_dir, R_OK) == 0) {
-                    strlcpy(profile_bin_dir, cur, n);
+                    hit_strlcpy(profile_bin_dir, cur, n);
                 } else {
                     profile_bin_dir[0] = '\0';
                 }
@@ -116,8 +116,8 @@ static int follow_links(char *prev, char *profile_bin_dir, size_t n) {
         }
         if (resolvelink(cur, next, n) == -1) break;
         no_links = 0;
-        strlcpy(prev, cur, n);
-        strlcpy(cur, next, n);
+        hit_strlcpy(prev, cur, n);
+        hit_strlcpy(cur, next, n);
     }
     free(cur);
     free(next);
@@ -140,15 +140,15 @@ static int get_dir_of(char *filename, char *containing_dir) {
     return 0;
 }
 
-/* Fill 'dst' with '${src}${dst}'; return value is same as strlcat  */
+/* Fill 'dst' with '${src}${dst}'; return value is same as hit_strlcat  */
 static int strlprepend(char *dst, char *src, size_t n) {
     char *buf = malloc(n);
     size_t r;
-    r = strlcpy(buf, dst, n);
+    r = hit_strlcpy(buf, dst, n);
     if (r >= n) goto error;
-    r = strlcpy(dst, src, n);
+    r = hit_strlcpy(dst, src, n);
     if (r >= n) goto error;
-    r = strlcat(dst, buf, n);
+    r = hit_strlcat(dst, buf, n);
     if (r >= n) goto error;
     r = 0;
  error:
@@ -211,7 +211,7 @@ static int expandvars(char *dst, char *src, char *origin, char *profile_bin_dir,
                 }
                 m = strlen(value);
                 if (m > n) goto toolong;
-                strlcpy(dst, value, n);
+                hit_strlcpy(dst, value, n);
                 dst += m;
                 n -= m;
 
@@ -354,7 +354,7 @@ int main(int argc, char *argv[]) {
         /* Launched through PATH lookup */
         if (find_in_path(argv[0], getenv("PATH"), calling_link, PATH_MAX) != 0) return -1;
     } else {
-        strlcpy(calling_link, argv[0], PATH_MAX);
+        hit_strlcpy(calling_link, argv[0], PATH_MAX);
     }
 
 
@@ -369,22 +369,22 @@ int main(int argc, char *argv[]) {
     if (debug) fprintf(stderr, "%sPROFILE_BIN_DIR=%s\n", debug_header, profile_bin_dir);
 
     if (profile_bin_dir[0] == '\0') {
-        strlcpy(profile_bin_dir, "__NA__", PATH_MAX);
+        hit_strlcpy(profile_bin_dir, "__NA__", PATH_MAX);
     }
 
     /* Open ${calling_link}.link and read the contents */
-    if (strlcpy(buf, calling_link, PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
-    if (strlcat(buf, ".link", PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
+    if (hit_strlcpy(buf, calling_link, PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
+    if (hit_strlcat(buf, ".link", PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
     if (resolve_link_in_textfile(buf, program_to_launch, PATH_MAX) != 0) {
         if (errno != ENOENT) goto error;
         /* ${calling_link}.link not found, use ${calling_link}.real */
-        if (strlcpy(program_to_launch, calling_link, PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
-        if (strlcat(program_to_launch, ".real", PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
+        if (hit_strlcpy(program_to_launch, calling_link, PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
+        if (hit_strlcat(program_to_launch, ".real", PATH_MAX) >= PATH_MAX) { line = __LINE__; goto error; }
     }
 
     /* Find ${ORIGIN}; we need to resolve realpath() of program to launch */
     if (realpath(program_to_launch, origin) == NULL) {
-        strlcpy(origin, "__NA__", PATH_MAX);
+        hit_strlcpy(origin, "__NA__", PATH_MAX);
     } else {
         splitpath(origin, &s);
         if (s == origin) {

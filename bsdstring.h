@@ -36,7 +36,7 @@ for #include-ing).
  * If retval >= siz, truncation occurred.
  */
 static size_t
-strlcat(char *dst, const char *src, size_t siz)
+hit_strlcat(char *dst, const char *src, size_t siz)
 {
 	char *d = dst;
 	const char *s = src;
@@ -69,7 +69,7 @@ strlcat(char *dst, const char *src, size_t siz)
  * Returns strlen(src); if retval >= siz, truncation occurred.
  */
 static size_t
-strlcpy(char *dst, const char *src, size_t siz)
+hit_strlcpy(char *dst, const char *src, size_t siz)
 {
 	char *d = dst;
 	const char *s = src;
