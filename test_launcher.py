@@ -8,6 +8,7 @@ import os
 import shutil
 from os.path import join as pjoin
 from inspect import isgeneratorfunction
+from pprint import pprint
 
 from nose.tools import eq_, ok_
 
@@ -99,6 +100,23 @@ def test_link_resolution(d):
     yield doit, ['foo3'], '.', '.'
     yield doit, ['foo3'], d, d
     yield doit, [pjoin(d, 'foo3')], None, d
+
+@fixture
+def test_symlink_in_path(d):
+    # opt/profile/bin/python -> launcher
+    # opt/profile/bin/python.link -> ../../python/bin/python
+    # foo/local -> ../opt/profile
+    # execute foo/local/
+
+    os.makedirs('opt/profile/bin')
+    os.makedirs('opt/python/bin')
+    os.makedirs('foo')
+    os.symlink('../opt/profile', 'foo/local')
+    os.symlink(_launcher, 'opt/profile/bin/python')
+    with open('opt/profile/bin/python.link', 'w') as f:
+        f.write('../../python/bin/python')
+    log, ret, _, lines = execute_link(['python'], pjoin(d, 'foo/local/bin'))
+    ok_(lines[-1].startswith("launcher:Unable to launch '%s/opt/profile/bin/../../python/bin/python'" % d))
 
 @fixture
 def test_profile_bin_dir(d):

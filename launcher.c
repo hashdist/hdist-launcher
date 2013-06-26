@@ -127,22 +127,6 @@ static int follow_links(char *prev, char *profile_bin_dir, size_t n) {
     return (errno == EINVAL) ? 0 : -1;
 }
 
-/* Fill 'dst' with '${src}${dst}'; return value is same as strlcat  */
-static int strlprepend(char *dst, char *src, size_t n) {
-    char *buf = malloc(n);
-    size_t r;
-    r = hit_strlcpy(buf, dst, n);
-    if (r >= n) goto error;
-    r = hit_strlcpy(dst, src, n);
-    if (r >= n) goto error;
-    r = hit_strlcat(dst, buf, n);
-    if (r >= n) goto error;
-    r = 0;
- error:
-    free(buf);
-    return r;
-}
-
 static void skip_whites(char **r) {
     while (**r == ' ' || **r == '\t') ++*r;
 }
@@ -292,7 +276,8 @@ static int attempt_shebang_launch(char *program_to_launch, char *origin, char *p
 static int resolve_link_in_textfile(char *filename, char *out, size_t n) {
     FILE *f;
     size_t m;
-    char *s;
+    char *s, *containing_dir;
+    char buf[PATH_MAX];
     if ((f = fopen(filename, "r")) == NULL) { line = __LINE__; return -1; }
     if (fgets(out, n, f) == NULL) { 
         fclose(f);
@@ -303,17 +288,32 @@ static int resolve_link_in_textfile(char *filename, char *out, size_t n) {
     m = strlen(out);
     if (out[m - 1] == '\n') out[m - 1] = '\0';
     if (out[0] != '/') {
-        /* path is relative to file location */
+        /* path is relative to file's realpath() location */
         splitpath(filename, &s);
         if (filename != s) {
-            char saved = s[0];
-            s[-1] = '/';
+            char oldchar = s[0];
+
+            /* resolve the realpath containing the text file */
             s[0] = '\0';
-            if (strlprepend(out, filename, PATH_MAX) >= PATH_MAX) {
-                errno = ENAMETOOLONG; line = __LINE__;
-                return -1;
+            containing_dir = realpath(filename, NULL);
+            s[0] = oldchar;
+            if (containing_dir == NULL) { line = __LINE__; return -1; }
+
+
+            m = hit_strlcpy(buf, out, PATH_MAX);
+            if (m >= PATH_MAX) { free(containing_dir); line = __LINE__; return -1; }
+
+            m = hit_strlcpy(out, containing_dir, n);
+            free(containing_dir);
+            if (m >= n) { line = __LINE__; return -1; }
+            if (out[m - 1] != '/') {
+                out[m] = '/';
+                m++;
             }
-            s[0] = saved;
+            n -= m;
+            m = hit_strlcpy(out + m, buf, n);
+            if (m >= n) { line = __LINE__; return -1; }
+            printf("HELLO %s\n", out);
         }
     }
     return 0;
