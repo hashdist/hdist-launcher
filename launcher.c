@@ -127,20 +127,7 @@ static int follow_links(char *prev, char *profile_bin_dir, size_t n) {
     return (errno == EINVAL) ? 0 : -1;
 }
 
-static int get_dir_of(char *filename, char *containing_dir) {
-    size_t n;
-    if (!realpath(filename, containing_dir)) {
-        return -1;
-    }
-    /* chop off trailing filename; dirname() API does not promise to modify
-       string in-place on all platforms *shrug* */
-    n = strlen(containing_dir);
-    while (n > 0 && containing_dir[--n] != '/') ;
-    containing_dir[n] = '\0';
-    return 0;
-}
-
-/* Fill 'dst' with '${src}${dst}'; return value is same as hit_strlcat  */
+/* Fill 'dst' with '${src}${dst}'; return value is same as strlcat  */
 static int strlprepend(char *dst, char *src, size_t n) {
     char *buf = malloc(n);
     size_t r;
