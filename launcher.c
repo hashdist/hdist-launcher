@@ -313,7 +313,6 @@ static int resolve_link_in_textfile(char *filename, char *out, size_t n) {
             n -= m;
             m = hit_strlcpy(out + m, buf, n);
             if (m >= n) { line = __LINE__; return -1; }
-            printf("HELLO %s\n", out);
         }
     }
     return 0;
