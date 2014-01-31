@@ -390,6 +390,9 @@ int main(int argc, char *argv[]) {
         goto error;
     }
     /* shebang not present */
+    /* substitute argv[0] with caller */
+    hit_strlcpy(argv[0], calling_link, PATH_MAX);
+    if (debug) fprintf(stderr, "%sargv[0]=%s\n", debug_header, argv[0]);
     execv(program_to_launch, argv);
     fprintf(stderr, "launcher:Unable to launch '%s' (%s)\n", program_to_launch,
             strerror(errno));
