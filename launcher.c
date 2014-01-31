@@ -330,6 +330,7 @@ int main(int argc, char *argv[]) {
     char origin[PATH_MAX];
     char profile_bin_dir[PATH_MAX];
     char *s;
+    int i;
     line = 0;
 
     s = getenv("HDIST_LAUNCHER_DEBUG");
@@ -391,8 +392,13 @@ int main(int argc, char *argv[]) {
     }
     /* shebang not present */
     /* substitute argv[0] with caller */
-    hit_strlcpy(argv[0], calling_link, PATH_MAX);
-    if (debug) fprintf(stderr, "%sargv[0]=%s\n", debug_header, argv[0]);
+    argv[0] = calling_link;
+    if (debug){
+      fprintf(stderr, "%sprogram_to_launch=%s\n", debug_header, program_to_launch);
+      for (i=0;i<argc;i++){
+	fprintf(stderr, "%sargv[%d]=%s\n", debug_header, i,argv[i]);
+      }
+    }
     execv(program_to_launch, argv);
     fprintf(stderr, "launcher:Unable to launch '%s' (%s)\n", program_to_launch,
             strerror(errno));
