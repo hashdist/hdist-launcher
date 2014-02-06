@@ -37,7 +37,7 @@ def execute_link(cmd, path_entry=None):
             pass
         else:
             result.setdefault(key, []).append(value)
-    return result, p.wait(), stdout.splitlines(), stderr.splitlines(), 
+    return result, p.wait(), stdout.splitlines(), stderr.splitlines(),
 
 def fixture(func):
     if isgeneratorfunction(func):
@@ -63,7 +63,7 @@ def fixture(func):
             finally:
                 shutil.rmtree(d)
                 os.chdir(oldcwd)
-        
+
     return replacement
 
 def setup():
@@ -213,15 +213,21 @@ def test_shebang_multi(d):
     os.symlink(sys.executable, 'link2')
     log, ret, _, lines = execute_link(['./script'])
     eq_(3, ret)
-    
+
 
 @fixture
 def test_program_launching(d):
-    with open('program.link', 'w') as f:
+    with open(pjoin(d, 'program.link'), 'w') as f:
         f.write("/bin/echo\n")
-    os.symlink(_launcher, 'program')
-    log, ret, outlines, _ = execute_link(['./program', 'hello'])
+    os.symlink(_launcher, pjoin(d, 'program'))
+    log, ret, outlines, err = execute_link([pjoin(d, './program'), 'hello'])
+    # check that argv is the program as called
+    eq_([pjoin(d, './program')], log['argv[0]'])
+    # check that the program is actually /bin/echo
+    eq_(['/bin/echo'], log['program'])
+    # check that /bin/echo was called properly
     eq_(['hello'], outlines)
+
 
 @fixture
 def test_direct_execute(d):
