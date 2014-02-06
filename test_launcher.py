@@ -44,7 +44,7 @@ def fixture(func):
         @wraps(func)
         def replacement():
             oldcwd = os.getcwd()
-            d = tempfile.mkdtemp()
+            d = os.path.realpath(tempfile.mkdtemp())
             try:
                 os.chdir(d)
                 for x in func(d):
@@ -56,7 +56,7 @@ def fixture(func):
         @wraps(func)
         def replacement():
             oldcwd = os.getcwd()
-            d = tempfile.mkdtemp()
+            d = os.path.realpath(tempfile.mkdtemp())
             try:
                 os.chdir(d)
                 func(d)
