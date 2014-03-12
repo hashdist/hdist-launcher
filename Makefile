@@ -5,7 +5,7 @@ BINS = launcher
 all: launcher
 
 launcher: launcher.c
-	gcc -g -Os -Wall -Wno-unused-function -o launcher launcher.c
+	${CC} -g -Os -Wall -Wno-unused-function -o launcher launcher.c
 	strip launcher
 
 install: ${BINS}
